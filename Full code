@@ -233,11 +233,11 @@ void loop() {
     logData(ampere, ampere);
   }
 
-  int startHour = 23, startMinute = 30;  // Waktu mulai motor berjalan
-  int stopHour = 1, stopMinute = 00;    // Waktu berhenti motor
+  int startHour = 9, startMinute = 00;  // Waktu mulai motor berjalan
+  int stopHour = 14, stopMinute = 59;    // Waktu berhenti motor
 
-  int lockHour = 1, lockMinute = 05;  // Waktu motor dikunci
-  int unlockHour = 1, unlockMinute = 10; // Waktu motor tidak terkunci lagi
+  int lockHour = 15, lockMinute = 00;  // Waktu motor dikunci
+  int unlockHour = 16, unlockMinute = 59; // Waktu motor tidak terkunci lagi
 
   if (isTimeInRange(now.hour(), now.minute(), startHour, startMinute, stopHour, stopMinute)) {
     motor(); // Jalankan motor jika dalam rentang waktu
@@ -246,11 +246,11 @@ void loop() {
   else if (isTimeInRange(now.hour(), now.minute(), lockHour, lockMinute, unlockHour, unlockMinute)) {
     lockMotor(); // Kunci motor di posisi terakhir
   } 
-  else if (now.hour() == 23  && now.minute() == 19) {
+  else if (now.hour() == 17  && now.minute() == 00) {
     moveBackStepper();
   } 
   
-  else if (now.hour() == 23 && now.minute() ==  25) {
+  else if (now.hour() == 17 && now.minute() ==  20) {
     moveBackStepper();
   } 
 
