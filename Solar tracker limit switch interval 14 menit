@@ -1,0 +1,238 @@
+/*Solar Tracker Menggunakan Limit Witch dengna Tracking Interval 14 menit
+- Menggunakan Driver Tb660 dan Motor Stepper NEMA 17 sebagai penggerak
+- Menggunakan RTC DS3231 sebagai pencatat waktu
+- Menggunakan sensor ACS712 serta resistor pembagi tegangan 10kohm sebagai sensor tegangan dan arus
+- Menggunakan SD Module Card sebagai modul pencatat file arus tegangan dan waktu
+- Menggunakan LCD 16x2 I2C sebagai penampil kterangan sistem mikrokontroler
+----------------------------------------------------------------------------------------------------
+Sistem bergerak dari jam 9 pagi sampai jam 3 sore untuk mentracker matahari, pada jam 3 sore tepat sampai jam 6 tepat motor akan reset posisi ke timur berputar arah Clock Wise
+dan menyentuh limit switch timur lalu berhenti. Saat jam 6 pagi sampai jam 9 pagi motor akan stad by di posisi timur
+*/
+
+#include <Wire.h>
+#include <RTClib.h>
+#include <LiquidCrystal_I2C.h>
+#include <SD.h>
+
+// Pin Stepper Motor
+#define STEP 4
+#define DIR 5
+#define EN 6
+
+// Pin Limit Switch
+#define LIMIT_SW_CW 2   // Limit switch barat (reset)
+#define LIMIT_SW_CCW 3  // Limit switch timur
+
+// Sensor Arus dan Tegangan
+#define VOLTAGE_SENSOR A0
+#define CURRENT_SENSOR A1
+
+// SD Card
+#define SD_CS 10
+
+// LCD I2C
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+RTC_DS3231 rtc;
+File dataFile;
+
+// Variabel Global
+unsigned long previousMillisTracking = 0;
+const unsigned long intervalTracking = 840000;  // 14 menit = 840000 ms
+int langkahPerTracking = 25;
+
+unsigned long previousMillisStep = 0;
+const unsigned long intervalStep = 1000;  // 1 ms antar step
+
+bool motorRunning = false;
+bool resetActive = false;
+
+// Fungsi Setup
+void setup() {
+    Serial.begin(9600);
+    pinMode(STEP, OUTPUT);
+    pinMode(DIR, OUTPUT);
+    pinMode(EN, OUTPUT);
+    pinMode(LIMIT_SW_CW, INPUT_PULLUP);
+    pinMode(LIMIT_SW_CCW, INPUT_PULLUP);
+    pinMode(VOLTAGE_SENSOR, INPUT);
+    pinMode(CURRENT_SENSOR, INPUT);
+
+    lcd.begin(16, 2);
+    lcd.backlight();
+
+    if (!rtc.begin()) {
+        Serial.println("RTC tidak terdeteksi!");
+        while (1);
+    }
+
+    if (!SD.begin(SD_CS)) {
+        Serial.println("SD Card gagal!");
+        while (1);
+    }
+
+    Serial.println("Sistem siap!");
+    digitalWrite(EN, LOW);  // Enable motor
+}
+
+// Fungsi Reset ke Timur menggunakan millis()
+void resetKeTimur() {
+    Serial.println("Reset ke timur dimulai...");
+    digitalWrite(DIR, LOW);  // Arah ke Timur (CCW)
+    resetActive = true;
+    previousMillisStep = millis();
+}
+
+// Fungsi Membaca Sensor Tegangan dan Arus
+float bacaTegangan() {
+    int raw = analogRead(VOLTAGE_SENSOR);
+    return (raw * 5.0 / 1023.0) * 2 * 1000;  // Output dalam miliVolt
+}
+
+float bacaArus() {
+    int raw = analogRead(CURRENT_SENSOR);
+    float teganganSensor = raw * 5.0 / 1023.0;
+    return ((teganganSensor - 2.5) / 0.066) * 1000;  // Output dalam miliAmpere
+}
+
+// Fungsi Menyimpan Data ke SD Card
+void simpanData(float volt, float amp, String arah) {
+    DateTime now = rtc.now();
+    dataFile = SD.open("data.txt", FILE_WRITE);
+    
+    if (dataFile) {
+        dataFile.print(now.year(), DEC);
+        dataFile.print("/");
+        dataFile.print(now.month(), DEC);
+        dataFile.print("/");
+        dataFile.print(now.day(), DEC);
+        dataFile.print(" ");
+        dataFile.print(now.hour(), DEC);
+        dataFile.print(":");
+        dataFile.print(now.minute(), DEC);
+        dataFile.print(":");
+        dataFile.print(now.second(), DEC);
+        dataFile.print(", ");
+        dataFile.print("Arah:");
+        dataFile.print(arah);
+        dataFile.print(", ");
+        dataFile.print(volt, 2);
+        dataFile.print(" mV, ");
+        dataFile.print(amp, 2);
+        dataFile.println(" mA");
+        dataFile.close();
+        Serial.println("Data tersimpan!");
+    } else {
+        Serial.println("Gagal menyimpan data ke SD Card.");
+    }
+}
+
+// Fungsi Tracking Matahari menggunakan millis()
+void trackingMatahari() {
+    unsigned long currentMillis = millis();
+
+    if (currentMillis - previousMillisTracking >= intervalTracking) {
+        previousMillisTracking = currentMillis;
+        motorRunning = true;
+        digitalWrite(DIR, HIGH);  // Arah ke Barat (CW)
+    }
+}
+
+// Fungsi Loop Utama
+void loop() {
+    DateTime now = rtc.now();
+
+    // Melakukan tracking hanya dari jam 9 pagi - 3 sore
+    if (now.hour() >= 9 && now.hour() < 15) {
+        trackingMatahari();
+    } else if (now.hour() == 15) {
+        digitalWrite(EN, LOW);  // Motor tetap terkunci
+    } else if (now.hour() == 6) {
+        resetKeTimur();
+    }
+
+    // Reset saat limit switch ditekan
+    if (digitalRead(LIMIT_SW_CW) == LOW && !resetActive) {
+        Serial.println("Limit switch Barat ditekan! Reset ke Timur...");
+        resetKeTimur();
+    }
+
+    // Jalankan motor tracking
+    if (motorRunning) {
+        unsigned long currentMillis = millis();
+
+        if (currentMillis - previousMillisStep >= intervalStep) {
+            previousMillisStep = currentMillis;
+            static int langkahTracking = 0;
+
+            digitalWrite(STEP, HIGH);
+            delayMicroseconds(1000);
+            digitalWrite(STEP, LOW);
+            delayMicroseconds(1000);
+
+            langkahTracking++;
+
+            if (langkahTracking >= langkahPerTracking) {
+                motorRunning = false;
+                langkahTracking = 0;
+
+                float volt = bacaTegangan();
+                float amp = bacaArus();
+                simpanData(volt, amp, "CW(Barat)");
+            }
+        }
+    }
+
+    // Jalankan reset motor ke timur secara bertahap
+    if (resetActive) {
+        unsigned long currentMillis = millis();
+
+        if (currentMillis - previousMillisStep >= intervalStep) {
+            previousMillisStep = currentMillis;
+            static int langkahReset = 0;
+            static int kecepatanReset = 800;
+
+            digitalWrite(STEP, HIGH);
+            delayMicroseconds(kecepatanReset);
+            digitalWrite(STEP, LOW);
+            delayMicroseconds(kecepatanReset);
+
+            langkahReset++;
+
+            // Memperlambat kecepatan reset bertahap
+            kecepatanReset = map(langkahReset, 0, 100, 800, 2000);
+
+            // Jika Limit Switch CCW aktif, mundur sedikit
+            if (digitalRead(LIMIT_SW_CCW) == LOW || langkahReset > 1000) {
+                Serial.println("Limit switch CCW aktif! Mundur sedikit...");
+
+                for (int i = 0; i < 10; i++) {
+                    digitalWrite(DIR, HIGH);  // Arah balik (CW)
+                    digitalWrite(STEP, HIGH);
+                    delayMicroseconds(2000);
+                    digitalWrite(STEP, LOW);
+                    delayMicroseconds(2000);
+                }
+
+                Serial.println("Reset selesai dengan lembut.");
+                resetActive = false;
+            }
+        }
+    }
+
+    // Tampilkan Data ke LCD
+    lcd.setCursor(0, 0);
+    lcd.print(now.hour());
+    lcd.print(":");
+    lcd.print(now.minute());
+    lcd.print(":");
+    lcd.print(now.second());
+
+    float voltLCD = bacaTegangan() / 1000.0;  // Tampilkan dalam Volt
+    float ampLCD = bacaArus() / 1000.0;      // Tampilkan dalam Ampere
+
+    lcd.setCursor(0, 1);
+    lcd.print(voltLCD, 2);
+    lcd.print("V ");
+    lcd.print(ampLCD, 2);
+    lcd.print("A");
+}
