@@ -57,7 +57,7 @@ void setup() {
     pinMode(VOLTAGE_SENSOR, INPUT);
     pinMode(CURRENT_SENSOR, INPUT);
 
-    lcd.begin();
+    lcd.begin(16, 2);
     lcd.backlight();
 
     if (!rtc.begin()) {
