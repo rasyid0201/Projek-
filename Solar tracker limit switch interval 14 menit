@@ -21,7 +21,7 @@ dan menyentuh limit switch timur lalu berhenti. Saat jam 6 pagi sampai jam 9 pag
 
 // Pin Limit Switch
 #define LIMIT_SW_CW 2   // Limit switch barat (reset)
-#define LIMIT_SW_CCW 3  // Limit switch timur
+#define LIMIT_SW_CCW 3  // Limit switch timur (untuk berhenti reset)
 
 // Sensor Arus dan Tegangan
 #define VOLTAGE_SENSOR A0
@@ -57,7 +57,7 @@ void setup() {
     pinMode(VOLTAGE_SENSOR, INPUT);
     pinMode(CURRENT_SENSOR, INPUT);
 
-    lcd.begin(16, 2);
+    lcd.begin();
     lcd.backlight();
 
     if (!rtc.begin()) {
@@ -182,7 +182,7 @@ void loop() {
         }
     }
 
-    // Jalankan reset motor ke timur secara bertahap
+    // Jalankan reset motor ke timur secara bertahap tanpa batasan waktu
     if (resetActive) {
         unsigned long currentMillis = millis();
 
@@ -201,10 +201,11 @@ void loop() {
             // Memperlambat kecepatan reset bertahap
             kecepatanReset = map(langkahReset, 0, 100, 800, 2000);
 
-            // Jika Limit Switch CCW aktif, mundur sedikit
-            if (digitalRead(LIMIT_SW_CCW) == LOW || langkahReset > 1000) {
-                Serial.println("Limit switch CCW aktif! Mundur sedikit...");
+            // Jika Limit Switch CCW aktif, hentikan reset
+            if (digitalRead(LIMIT_SW_CCW) == LOW) {
+                Serial.println("Limit switch CCW aktif! Reset selesai dengan lembut.");
 
+                // Mundur sedikit agar limit switch tidak terus tertekan
                 for (int i = 0; i < 10; i++) {
                     digitalWrite(DIR, HIGH);  // Arah balik (CW)
                     digitalWrite(STEP, HIGH);
@@ -213,7 +214,6 @@ void loop() {
                     delayMicroseconds(2000);
                 }
 
-                Serial.println("Reset selesai dengan lembut.");
                 resetActive = false;
             }
         }
