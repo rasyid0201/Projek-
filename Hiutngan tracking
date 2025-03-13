@@ -1,0 +1,24 @@
+Penjelasan Perhitungan langkah tracking
+
+    Total waktu tracking: 9 pagi - 3 sore = 6 jam = 360 menit
+    Tracking interval: 14 menit sekali
+
+    Jumlah pergerakan:
+    360 menit÷14 menit=25.7≈25 langkah per hari
+    360 menit÷14 menit=25.7≈25 langkah per hari
+
+    Sudut per langkah motor:
+        Motor stepper 1.8° per langkah
+        Rasio timing pulley 1:3, jadi sudut yang diterapkan ke panel adalah:
+        1.8∘3=0.6∘ per langkah
+        31.8∘​=0.6∘ per langkah
+    Total sudut yang harus ditempuh: 90° per hari
+
+    Jumlah langkah per hari:
+    90∘÷0.6∘=150 langkah
+    90∘÷0.6∘=150 langkah
+    Langkah per tracking interval (14 menit):
+    150 langkah÷25=6 langkah per perintah
+    150 langkah÷25=6 langkah per perintah
+
+Jadi setiap 14 menit, motor akan bergerak 6 langkah sekali perintah 
