@@ -38,7 +38,7 @@ File dataFile;
 // Variabel Global
 unsigned long previousMillisTracking = 0;
 const unsigned long intervalTracking = 840000;  // 14 menit = 840000 ms
-int langkahPerTracking = 25;
+int langkahPerTracking = 6;
 
 unsigned long previousMillisStep = 0;
 const unsigned long intervalStep = 1000;  // 1 ms antar step
