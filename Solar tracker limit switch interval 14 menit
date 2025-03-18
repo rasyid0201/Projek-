@@ -20,8 +20,8 @@ dan menyentuh limit switch timur lalu berhenti. Saat jam 6 pagi sampai jam 9 pag
 #define EN 6
 
 // Pin Limit Switch
-#define LIMIT_SW_CW 2   // Limit switch barat (reset)
-#define LIMIT_SW_CCW 3  // Limit switch timur (untuk berhenti reset)
+#define LIMIT_SW_CW 3   // Limit switch barat (reset)
+#define LIMIT_SW_CCW 2  // Limit switch timur (untuk berhenti reset)
 
 // Sensor Arus dan Tegangan
 #define VOLTAGE_SENSOR A0
@@ -37,11 +37,13 @@ File dataFile;
 
 // Variabel Global
 unsigned long previousMillisTracking = 0;
-const unsigned long intervalTracking = 840000;  // 14 menit = 840000 ms
+const unsigned long intervalTracking =840000 ;  // 5 detik tracking interval untuk pengujian
 int langkahPerTracking = 6;
 
 unsigned long previousMillisStep = 0;
-const unsigned long intervalStep = 1000;  // 1 ms antar step
+const unsigned long intervalStep = 100;  // 1 ms antar step
+
+int previousTrackingMinute = -1; //mengetahui untuk pertama kali tracking
 
 bool motorRunning = false;
 bool resetActive = false;
@@ -61,23 +63,23 @@ void setup() {
     lcd.backlight();
 
     if (!rtc.begin()) {
-        Serial.println("RTC tidak terdeteksi!");
+        Serial.println("⛔ RTC tidak terdeteksi!");
         while (1);
     }
 
     if (!SD.begin(SD_CS)) {
-        Serial.println("SD Card gagal!");
+        Serial.println("⛔ SD Card gagal!");
         while (1);
     }
 
-    Serial.println("Sistem siap!");
+    Serial.println("✅ Sistem siap!");
     digitalWrite(EN, LOW);  // Enable motor
 }
 
 // Fungsi Reset ke Timur menggunakan millis()
 void resetKeTimur() {
-    Serial.println("Reset ke timur dimulai...");
-    digitalWrite(DIR, LOW);  // Arah ke Timur (CCW)
+    Serial.println("🔄 Reset ke Timur dimulai...");
+    digitalWrite(DIR, LOW);  // Arah ke Timur (CW)
     resetActive = true;
     previousMillisStep = millis();
 }
@@ -97,7 +99,7 @@ float bacaArus() {
 // Fungsi Menyimpan Data ke SD Card
 void simpanData(float volt, float amp, String arah) {
     DateTime now = rtc.now();
-    dataFile = SD.open("data.txt", FILE_WRITE);
+    dataFile = SD.open("Data.txt", FILE_WRITE);
     
     if (dataFile) {
         dataFile.print(now.year(), DEC);
@@ -120,20 +122,23 @@ void simpanData(float volt, float amp, String arah) {
         dataFile.print(amp, 2);
         dataFile.println(" mA");
         dataFile.close();
-        Serial.println("Data tersimpan!");
+        Serial.println("💾 Data tersimpan!");
     } else {
-        Serial.println("Gagal menyimpan data ke SD Card.");
+        Serial.println("⛔ Gagal menyimpan data ke SD Card.");
     }
 }
 
 // Fungsi Tracking Matahari menggunakan millis()
 void trackingMatahari() {
+    DateTime now = rtc.now();
     unsigned long currentMillis = millis();
 
-    if (currentMillis - previousMillisTracking >= intervalTracking) {
+    if ((currentMillis - previousMillisTracking >= intervalTracking) || previousTrackingMinute == -1) {
+        Serial.println("🌞 Tracking dimulai...");
         previousMillisTracking = currentMillis;
         motorRunning = true;
         digitalWrite(DIR, HIGH);  // Arah ke Barat (CW)
+        previousTrackingMinute = now.minute();
     }
 }
 
@@ -141,19 +146,24 @@ void trackingMatahari() {
 void loop() {
     DateTime now = rtc.now();
 
-    // Melakukan tracking hanya dari jam 9 pagi - 3 sore
+    // Melakukan tracking hanya dari jam 00:00 - 01:00 untuk pengujian
     if (now.hour() >= 9 && now.hour() < 15) {
         trackingMatahari();
     } else if (now.hour() == 15) {
         digitalWrite(EN, LOW);  // Motor tetap terkunci
-    } else if (now.hour() == 6) {
+    } else if (now.hour() == 18) {
         resetKeTimur();
     }
 
-    // Reset saat limit switch ditekan
-    if (digitalRead(LIMIT_SW_CW) == LOW && !resetActive) {
-        Serial.println("Limit switch Barat ditekan! Reset ke Timur...");
+    // Cek Limit Switch untuk Reset
+    if (digitalRead(LIMIT_SW_CCW) == LOW) {
+        Serial.println("⚠️ Limit Switch CCW ditekan! Harus reset ke Timur...");
         resetKeTimur();
+    }
+
+    if (digitalRead(LIMIT_SW_CW) == LOW) {
+        Serial.println("✅ Limit Switch CW ditekan! Reset selesai.");
+        resetActive = false; // Matikan mode reset
     }
 
     // Jalankan motor tracking
@@ -198,22 +208,10 @@ void loop() {
 
             langkahReset++;
 
-            // Memperlambat kecepatan reset bertahap
             kecepatanReset = map(langkahReset, 0, 100, 800, 2000);
 
-            // Jika Limit Switch CCW aktif, hentikan reset
             if (digitalRead(LIMIT_SW_CCW) == LOW) {
-                Serial.println("Limit switch CCW aktif! Reset selesai dengan lembut.");
-
-                // Mundur sedikit agar limit switch tidak terus tertekan
-                for (int i = 0; i < 10; i++) {
-                    digitalWrite(DIR, HIGH);  // Arah balik (CW)
-                    digitalWrite(STEP, HIGH);
-                    delayMicroseconds(2000);
-                    digitalWrite(STEP, LOW);
-                    delayMicroseconds(2000);
-                }
-
+                Serial.println("✅ Limit Switch CCW aktif! Reset selesai dengan lembut.");
                 resetActive = false;
             }
         }
@@ -227,8 +225,8 @@ void loop() {
     lcd.print(":");
     lcd.print(now.second());
 
-    float voltLCD = bacaTegangan() / 1000.0;  // Tampilkan dalam Volt
-    float ampLCD = bacaArus() / 1000.0;      // Tampilkan dalam Ampere
+    float voltLCD = bacaTegangan() / 1000.0;
+    float ampLCD = bacaArus() / 1000.0;
 
     lcd.setCursor(0, 1);
     lcd.print(voltLCD, 2);
@@ -236,3 +234,4 @@ void loop() {
     lcd.print(ampLCD, 2);
     lcd.print("A");
 }
+
